@@ -41,7 +41,7 @@
 #define MDM9x35_DUAL_LINK		"HSIC+PCIe"
 #define MDM9x35_HSIC			"HSIC"
 #define MDM2AP_STATUS_TIMEOUT_MS	120000L
-#define MODEM_CRASH_REPORT_TIMEOUT	5000L		//                                                                     
+#define MODEM_CRASH_REPORT_TIMEOUT	5000L		//
 #define MDM_MODEM_TIMEOUT		3000
 #define DEF_RAMDUMP_TIMEOUT		120000
 #define DEF_RAMDUMP_DELAY		2000
@@ -49,7 +49,7 @@
 #define SFR_MAX_RETRIES			10
 #define SFR_RETRY_INTERVAL		1000
 
-static int ramdump_done;		//                                                                     
+static int ramdump_done;		//
 
 enum mdm_gpio {
 	AP2MDM_WAKEUP = 0,
@@ -88,7 +88,7 @@ struct mdm_ctrl {
 	spinlock_t status_lock;
 	struct workqueue_struct *mdm_queue;
 	struct delayed_work mdm2ap_status_check_work;
-	struct delayed_work save_sfr_reason_work;	//                                                                     
+	struct delayed_work save_sfr_reason_work;	//
 	struct work_struct mdm_status_work;
 	struct work_struct restart_reason_work;
 	struct completion debug_done;
@@ -511,6 +511,7 @@ static int mdm_cmd_exe(enum esoc_cmd cmd, struct esoc_clink *esoc)
 		mdm->debug = 0;
 		mdm->ready = false;
 		ret = sysmon_send_shutdown(mdm->sysmon_subsys_id);
+		device_lock(dev);
 		if (ret)
 			dev_err(mdm->dev, "Graceful shutdown fail, ret = %d\n",
 									ret);
@@ -541,6 +542,7 @@ static int mdm_cmd_exe(enum esoc_cmd cmd, struct esoc_clink *esoc)
 		esoc_clink_queue_request(ESOC_REQ_SHUTDOWN, esoc);
 		mdm_power_down(mdm);
 		mdm_update_gpio_configs(mdm, GPIO_UPDATE_BOOTING_CONFIG);
+		device_unlock(dev);
 		break;
 	case ESOC_RESET:
 		mdm_toggle_soft_reset(mdm);
@@ -668,7 +670,7 @@ static int copy_dump(char index)
 	char path_to_dump[128];
         char path_to_copy[128];
 	char *dump_files[] = { "CODERAM.BIN", "DATARAM.BIN", "DDRCS0.BIN", "IPA_DRAM.BIN", "IPA_IRAM.BIN",
-			"IPA_REG1.BIN", "IPA_REG2.BIN", "IPA_REG3.BIN", "LPM.BIN", "MSGRAM.BIN", 
+			"IPA_REG1.BIN", "IPA_REG2.BIN", "IPA_REG3.BIN", "LPM.BIN", "MSGRAM.BIN",
 			"OCIMEM.BIN", "PMIC_PON.BIN", "RST_STAT.BIN", "load.cmm" };
         int ret, i;
 
@@ -707,7 +709,7 @@ static int copy_dump(char index)
         return 1;
 }
 
-static int ach_enabled(void) 
+static int ach_enabled(void)
 {
 	int fd, ret;
 	char *ach_switch_path = "/sys/module/lge_handle_panic/parameters/ach_enable";
@@ -718,7 +720,7 @@ static int ach_enabled(void)
 	if (fd < 0) {
 		printk("%s : can't open the ach switch file\n", __func__);
 		return 0;
-	} 
+	}
 
 	ret = sys_read(fd, &switch_buf, 1);
 
@@ -750,7 +752,7 @@ static void save_sfr_reason_work_fn(struct work_struct *work)
 	char serialno_file_path[]="/data/logger/serialno";
 	char serialno_buf[20];
 	int read_len = 0;
-       
+
 	mm_segment_t oldfs;
 	oldfs = get_fs();
 	set_fs(get_ds());
@@ -819,7 +821,7 @@ static void save_sfr_reason_work_fn(struct work_struct *work)
 			} else {
 
 				ret = sys_read(fd, &report_index, 1);
-	
+
 				if (ret < 0) {
 					printk("%s : can't read the index file\n", __func__);
 					report_index = '0';
