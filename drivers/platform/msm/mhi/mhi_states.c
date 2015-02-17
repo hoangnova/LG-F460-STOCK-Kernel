@@ -9,7 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU General Public License for more details.
  */
-
 #include "mhi_sys.h"
 #include "mhi_hwio.h"
 
@@ -251,7 +250,7 @@ MHI_STATUS process_WAKE_transition(mhi_device_ctxt *mhi_dev_ctxt,
 {
 	MHI_STATUS ret_val = MHI_STATUS_SUCCESS;
 	mhi_log(MHI_MSG_INFO, "Entered\n");
-	__pm_stay_awake(&mhi_dev_ctxt->wake_lock);
+	mhi_wake(mhi_dev_ctxt);
 
 	ret_val = mhi_turn_on_pcie_link(mhi_dev_ctxt);
 
@@ -278,7 +277,7 @@ MHI_STATUS process_WAKE_transition(mhi_device_ctxt *mhi_dev_ctxt,
 	}
 exit:
 	mhi_log(MHI_MSG_INFO, "Exited.\n");
-	__pm_relax(&mhi_dev_ctxt->wake_lock);
+	mhi_wake_relax(mhi_dev_ctxt);
 	return ret_val;
 
 }
@@ -628,7 +627,7 @@ MHI_STATUS process_M3_transition(mhi_device_ctxt *mhi_dev_ctxt,
 	return MHI_STATUS_SUCCESS;
 }
 MHI_STATUS process_SBL_transition(mhi_device_ctxt *mhi_dev_ctxt,
-		STATE_TRANSITION cur_work_item)
+				STATE_TRANSITION cur_work_item)
 {
 	MHI_STATUS ret_val;
 	u32 chan;
@@ -694,19 +693,19 @@ MHI_STATUS process_AMSS_transition(mhi_device_ctxt *mhi_dev_ctxt,
 						chan);
 				if (MHI_STATUS_SUCCESS != ret_val) {
 					mhi_log(MHI_MSG_CRITICAL,
-							"Failed to start chan0x%x,0x%x\n",
-							chan, ret_val);
+					"Failed to start chan0x%x,0x%x\n",
+					chan, ret_val);
 					return MHI_STATUS_ERROR;
 				} else {
 					atomic_inc(
-							&mhi_dev_ctxt->start_cmd_pending_ack);
+					&mhi_dev_ctxt->start_cmd_pending_ack);
 				}
 			}
 		}
 	}
 	mhi_log(MHI_MSG_INFO, "Waiting for cmd completions\n");
 	wait_event_interruptible(*mhi_dev_ctxt->chan_start_complete,
-			atomic_read(&mhi_dev_ctxt->start_cmd_pending_ack) == 0);
+		atomic_read(&mhi_dev_ctxt->start_cmd_pending_ack) == 0);
 	if (0 == mhi_dev_ctxt->flags.mhi_initialized) {
 
 		mhi_dev_ctxt->flags.mhi_initialized = 1;
@@ -714,24 +713,24 @@ MHI_STATUS process_AMSS_transition(mhi_device_ctxt *mhi_dev_ctxt,
 				MHI_CHAN_STATE_RUNNING);
 		if (MHI_STATUS_SUCCESS != ret_val)
 			mhi_log(MHI_MSG_CRITICAL,
-					"Failed to set local chan state\n");
+				"Failed to set local chan state\n");
 		if (!mhi_dev_ctxt->flags.mhi_clients_probed) {
 			ret_val = probe_clients(mhi_dev_ctxt, cur_work_item);
-			if (ret_val != MHI_STATUS_SUCCESS)
-				mhi_log(MHI_MSG_CRITICAL,
+				if (ret_val != MHI_STATUS_SUCCESS)
+						mhi_log(MHI_MSG_CRITICAL,
 						"Failed to probe MHI CORE clients.\n");
 			mhi_dev_ctxt->flags.mhi_clients_probed = 1;
 		} else {
 			ring_all_chan_dbs(mhi_dev_ctxt);
 			mhi_log(MHI_MSG_CRITICAL,
-					"Notifying clients that MHI is enabled\n");
+				"Notifying clients that MHI is enabled\n");
 			mhi_notify_clients(mhi_dev_ctxt,
 					MHI_CB_MHI_ENABLED);
 		}
 		if (ret_val != MHI_STATUS_SUCCESS)
 			mhi_log(MHI_MSG_CRITICAL,
-					"Failed to probe MHI CORE clients, ret 0x%x \n",
-					ret_val);
+				"Failed to probe MHI CORE clients, ret 0x%x \n",
+				ret_val);
 	}
 	atomic_dec(&mhi_dev_ctxt->flags.data_pending);
 	mhi_log(MHI_MSG_INFO, "Exited\n");
@@ -762,45 +761,45 @@ int mhi_initiate_m0(mhi_device_ctxt *mhi_dev_ctxt)
 	unsigned long flags;
 	mhi_log(MHI_MSG_INFO, "Entered MHI state %d, Pending M0 %d Pending M3 %d\n",
 			mhi_dev_ctxt->mhi_state, mhi_dev_ctxt->flags.pending_M0,
-			mhi_dev_ctxt->flags.pending_M3);
+						mhi_dev_ctxt->flags.pending_M3);
 	mutex_lock(&mhi_dev_ctxt->pm_lock);
 	/* 1. Wait on M3 event completion */
 	mhi_log(MHI_MSG_INFO,
-			"Waiting for M0 M1 or M3. Currently %d...\n",
-			mhi_dev_ctxt->mhi_state);
+		"Waiting for M0 M1 or M3. Currently %d...\n",
+					mhi_dev_ctxt->mhi_state);
 
 	r = wait_event_interruptible_timeout(*mhi_dev_ctxt->M3_event,
 			mhi_dev_ctxt->mhi_state == MHI_STATE_M3 ||
 			mhi_dev_ctxt->mhi_state == MHI_STATE_M0 ||
 			mhi_dev_ctxt->mhi_state == MHI_STATE_M1,
-			msecs_to_jiffies(MHI_MAX_SUSPEND_TIMEOUT));
+		msecs_to_jiffies(MHI_MAX_SUSPEND_TIMEOUT));
 	switch(r) {
-		case 0:
-			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
-					"Timeout: State %d after %d ms\n",
-					mhi_dev_ctxt->mhi_state,
-					MHI_MAX_SUSPEND_TIMEOUT);
-			mhi_dev_ctxt->counters.m0_event_timeouts++;
-			r = -ETIME;
-			goto exit;
-			break;
-		case -ERESTARTSYS:
-			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
-					"Going Down...\n");
-			goto exit;
-			break;
-		default:
-			mhi_log(MHI_MSG_INFO | MHI_DBG_POWER,
-					"Wait complete state: %d\n", mhi_dev_ctxt->mhi_state);
-			r = 0;
-			break;
+	case 0:
+		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+			"Timeout: State %d after %d ms\n",
+				mhi_dev_ctxt->mhi_state,
+				MHI_MAX_SUSPEND_TIMEOUT);
+		mhi_dev_ctxt->counters.m0_event_timeouts++;
+		r = -ETIME;
+		goto exit;
+		break;
+	case -ERESTARTSYS:
+		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+			"Going Down...\n");
+		goto exit;
+		break;
+	default:
+		mhi_log(MHI_MSG_INFO | MHI_DBG_POWER,
+			"Wait complete state: %d\n", mhi_dev_ctxt->mhi_state);
+		r = 0;
+		break;
 	}
 	if (mhi_dev_ctxt->mhi_state == MHI_STATE_M0 ||
-			mhi_dev_ctxt->mhi_state == MHI_STATE_M1) {
+	    mhi_dev_ctxt->mhi_state == MHI_STATE_M1) {
 		mhi_assert_device_wake(mhi_dev_ctxt);
 		mhi_log(MHI_MSG_INFO,
 				"MHI state %d, done\n",
-				mhi_dev_ctxt->mhi_state);
+					mhi_dev_ctxt->mhi_state);
 		goto exit;
 	} else {
 		/* 3. Turn the clocks back on. */
@@ -816,7 +815,7 @@ int mhi_initiate_m0(mhi_device_ctxt *mhi_dev_ctxt)
 				"Setting M0 ...\n");
 		if (mhi_dev_ctxt->flags.pending_M3){
 			mhi_log(MHI_MSG_INFO,
-					"Pending M3 detected, aborting M0 procedure\n");
+				"Pending M3 detected, aborting M0 procedure\n");
 			write_unlock_irqrestore(&mhi_dev_ctxt->xfer_lock, flags);
 			r = -EPERM;
 			goto exit;
@@ -873,30 +872,30 @@ MHI_STATUS mhi_process_link_down(mhi_device_ctxt *mhi_dev_ctxt)
 	while(!mhi_dev_ctxt->ev_thread_stopped) {
 		wake_up_interruptible(mhi_dev_ctxt->event_handle);
 		mhi_log(MHI_MSG_INFO,
-				"Waiting for threads to SUSPEND EVT: %d, STT: %d\n",
-				mhi_dev_ctxt->st_thread_stopped,
-				mhi_dev_ctxt->ev_thread_stopped);
+			"Waiting for threads to SUSPEND EVT: %d, STT: %d\n",
+			mhi_dev_ctxt->st_thread_stopped,
+			mhi_dev_ctxt->ev_thread_stopped);
 		msleep(20);
 	}
 
 	switch(hrtimer_try_to_cancel(&mhi_dev_ctxt->m1_timer))
 	{
-		case 0:
-			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
-					"Timer was not active\n");
-			break;
-		case 1:
-			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
-					"Timer was active\n");
-			break;
-		case -1:
-			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
-					"Timer executing and can't stop\n");
+	case 0:
+		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+			"Timer was not active\n");
+		break;
+	case 1:
+		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+			"Timer was active\n");
+		break;
+	case -1:
+		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+			"Timer executing and can't stop\n");
 	}
 	r = mhi_set_bus_request(mhi_dev_ctxt, 0);
 	if (r)
 		mhi_log(MHI_MSG_INFO,
-				"Failed to scale bus request to sleep set.\n");
+			"Failed to scale bus request to sleep set.\n");
 	mhi_turn_off_pcie_link(mhi_dev_ctxt);
 	mhi_dev_ctxt->dev_info->link_down_cntr++;
 	atomic_set(&mhi_dev_ctxt->flags.data_pending, 0);
@@ -965,8 +964,8 @@ int mhi_initiate_m3(mhi_device_ctxt *mhi_dev_ctxt)
 		mhi_log(MHI_MSG_INFO | MHI_DBG_POWER,
 			"There are still %d acks pending from device\n",
 			atomic_read(&mhi_dev_ctxt->counters.outbound_acks));
-			__pm_stay_awake(&mhi_dev_ctxt->wake_lock);
-			__pm_relax(&mhi_dev_ctxt->wake_lock);
+			mhi_wake(mhi_dev_ctxt);
+			mhi_wake_relax(mhi_dev_ctxt);
 		goto exit;
 	}
 	if (atomic_read(&mhi_dev_ctxt->flags.data_pending))
@@ -980,7 +979,7 @@ int mhi_initiate_m3(mhi_device_ctxt *mhi_dev_ctxt)
 	if (mhi_dev_ctxt->flags.pending_M0) {
 		write_unlock_irqrestore(&mhi_dev_ctxt->xfer_lock, flags);
 		mhi_log(MHI_MSG_INFO,
-				"Pending M0 detected, aborting M3 procedure\n");
+			"Pending M0 detected, aborting M3 procedure\n");
 		r = -EPERM;
 		goto exit;
 	}
@@ -992,25 +991,25 @@ int mhi_initiate_m3(mhi_device_ctxt *mhi_dev_ctxt)
 			"Waiting for M3 completion.\n");
 	r = wait_event_interruptible_timeout(*mhi_dev_ctxt->M3_event,
 			mhi_dev_ctxt->mhi_state == MHI_STATE_M3,
-			msecs_to_jiffies(MHI_MAX_SUSPEND_TIMEOUT));
+		msecs_to_jiffies(MHI_MAX_SUSPEND_TIMEOUT));
 	switch(r) {
-		case 0:
-			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
-					"MDM failed to suspend after %d ms\n",
-					MHI_MAX_SUSPEND_TIMEOUT);
-			mhi_dev_ctxt->counters.m3_event_timeouts++;
-			mhi_dev_ctxt->flags.pending_M3 = 0;
-			goto exit;
-			break;
-		case -ERESTARTSYS:
-			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
-					"Going Down...\n");
-			goto exit;
-			break;
-		default:
-			mhi_log(MHI_MSG_INFO | MHI_DBG_POWER,
-					"M3 completion received\n");
-			break;
+	case 0:
+		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+			"MDM failed to suspend after %d ms\n",
+			MHI_MAX_SUSPEND_TIMEOUT);
+		mhi_dev_ctxt->counters.m3_event_timeouts++;
+		mhi_dev_ctxt->flags.pending_M3 = 0;
+		goto exit;
+		break;
+	case -ERESTARTSYS:
+		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+			"Going Down...\n");
+		goto exit;
+		break;
+	default:
+		mhi_log(MHI_MSG_INFO | MHI_DBG_POWER,
+			"M3 completion received\n");
+		break;
 	}
 	mhi_deassert_device_wake(mhi_dev_ctxt);
 	/* Turn off PCIe link*/

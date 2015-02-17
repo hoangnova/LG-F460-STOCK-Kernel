@@ -12,7 +12,7 @@
 #ifndef _H_MHI_UCI_INTERFACE
 #define _H_MHI_UCI_INTERFACE
 
-#include <linux/msm_mhi.h>
+#include "msm_mhi.h"
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/completion.h>
@@ -32,20 +32,11 @@
 #include <linux/ipc_logging.h>
 
 #define MIN(_x, _y)(((_x) < (_y)) ? (_x) : (_y))
-
-#ifdef FEATURE_UKNIGHT_MHI_DEDICATE_CHANNEL
-#define MHI_DEV_NODE_NAME_LEN 13
-#define MHI_MAX_NR_OF_CLIENTS 24
-#define MHI_SOFTWARE_CLIENT_START 0
-#define MHI_SOFTWARE_CLIENT_LIMIT 24
-#define MHI_MAX_SOFTWARE_CHANNELS 48
-#else
 #define MHI_DEV_NODE_NAME_LEN 13
 #define MHI_MAX_NR_OF_CLIENTS 23
 #define MHI_SOFTWARE_CLIENT_START 0
 #define MHI_SOFTWARE_CLIENT_LIMIT 23
 #define MHI_MAX_SOFTWARE_CHANNELS 46
-#endif
 
 #define MAX_NR_TRBS_PER_CHAN 10
 #define MHI_PCIE_VENDOR_ID 0x17CB
